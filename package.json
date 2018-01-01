@@ -1,0 +1,14 @@
+{
+  "name": "ethereum-debugger",
+  "version": "0.1.0",
+  "description": "A standalone debugger for Ethereum",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "eth-bin-to-ops": "^1.0.1"
+  }
+}

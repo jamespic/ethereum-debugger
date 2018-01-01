@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>$TXHASH</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet"
+      href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.3/css/bootstrap.min.css"
+      integrity="sha384-Zug+QiDoJOrZ5t4lssLdxGhVrurbmBWopoEl+M6BdEfwnCJZtKxi1KgxUyJq13dy"
+      crossorigin="anonymous">
+    <style>
+      div.code-container {
+        overflow: scroll;
+        height: 450px;
+      }
+      div.code-row {
+        word-break: keep-all;
+      }
+      span.code-label {
+        display: inline-block;
+        width: 3em;
+        text-align: right;
+      }
+      span.breakpoint {
+        background-color: #FCC0C0;
+      }
+      span.code-line {
+        font-family: monospace;
+        white-space: pre;
+      }
+      span.current-line {
+        background-color: #BFEFF5;
+      }
+    </style>
+
+  </head>
+  <body>
+    <script src="https://unpkg.com/mithril/mithril.js"></script>
+    <script>
+      class Debugger {
+        constructor(data) {
+          this.data = data
+          this.inst = 0
+          this.breakpoints = new Set()
+
+          this.lineOffsets = {}
+          for (let sourceFile in data.sources) {
+            let source = data.sources[sourceFile]
+            if (source != null) {
+              let lines = data.sources[sourceFile].split('\n')
+              let offset = 0
+              this.lineOffsets[sourceFile] = [0]
+              for (let line of lines) {
+                offset += line.length + 1
+                this.lineOffsets[sourceFile].push(offset)
+              }
+            }
+          }
+        }
+
+        next() {
+          if (this.inst < this.data.trace.length - 1) {
+            this.inst += 1
+            return true
+          } else return false
+        }
+
+        prev() {
+          if (this.inst > 0) {
+            this.inst -= 1
+            return true
+          } else return false
+        }
+
+        nextLine() {
+          let startLineNo = this.lineNo()
+          while (this.lineNo() == startLineNo || this.lineNo() == '::-1') {
+            if (!this.next()) return false
+          }
+          return true
+        }
+
+        prevLine() {
+          let startLineNo = this.lineNo()
+          while (this.lineNo() == startLineNo || this.lineNo() == '::-1') {
+            if (!this.prev()) return false
+          }
+          return true
+        }
+
+        nextBreakpoint() {
+          while (this.nextLine() && !this.breakpointHit()) {}
+          return this.breakpointHit()
+        }
+
+        prevBreakpoint() {
+          while (this.prevLine() && !this.breakpointHit()) {}
+          return this.breakpointHit()
+        }
+
+        addBreakpoint(file, line) {
+          this.breakpoints.add(`${file}::${line}`)
+        }
+
+        removeBreakpoint(file, line) {
+          this.breakpoints.delete(`${file}::${line}`)
+        }
+
+        isBreakpoint(file, line){
+          return this.breakpoints.has(`${file}::${line}`)
+        }
+
+        currentInstInfo() {
+          if (this._cachedInstNo !== this.inst) {
+            let traceItem = this.data.trace[this.inst]
+            let {infoHash, pc} = traceItem
+            let contractInfo = this.data.contractInfoLookup[infoHash]
+            let instInfo = contractInfo[pc]
+            let [line, lineOffset] = this.byteOffsetToLineOffset(instInfo.sourceFile, instInfo.sourceStart)
+            this._cachedInstInfo = {line, lineOffset, ...traceItem, ...instInfo}
+            this._cachedInstNo = this.inst
+          }
+          return this._cachedInstInfo
+        }
+
+        byteOffsetToLineOffset(sourceFile, offset) {
+          if (!(sourceFile in this.lineOffsets)) return [-1, -1]
+          let fileOffsets = this.lineOffsets[sourceFile]
+          // Switch to binary search if performance problematic
+          for (let i = 0; i < fileOffsets.length - 1; i++) {
+            if (fileOffsets[i] <= offset && offset < fileOffsets[i + 1]) return [i, offset - fileOffsets[i]]
+          }
+          return [-1, -1]
+        }
+
+        lineNo() {
+          let {sourceFile, line} = this.currentInstInfo()
+          return `${sourceFile}::${line}`
+        }
+
+        breakpointHit() {
+          return this.breakpoints.has(this.lineNo())
+        }
+      }
+
+      let DebugView = {
+        currentTab: 'Bytecode',
+        oninit(vnode) {
+          this.debug = vnode.attrs['debugger']
+        },
+        onstep() {
+          let currentFile = this.debug.currentInstInfo().sourceFile
+          if (currentFile && this.currentTab != 'Bytecode') {
+            this.currentTab = currentFile
+          }
+        },
+        view(vnode) {
+          return m('.container-fluid', [
+            m('div', [
+              m(
+                'select.btn',
+                {value: this.currentTab, onchange: (event) => this.currentTab = event.target.value},
+                ['Bytecode'].concat(Object.keys(this.debug.data.sources)).map(
+                  sourceFile => m('option', {value: sourceFile}, sourceFile)
+                )
+              ), ' ',
+              m('button.btn.btn-info',
+                {
+                  onclick: () => {this.debug.prevBreakpoint(), this.onstep()},
+                  accessKey: 'z'
+                },
+                "Prev Breakpoint"
+              ), ' ',
+              m('button.btn.btn-info',
+                {
+                  onclick: () => {this.debug.prevLine(), this.onstep()},
+                  accessKey: 'x'
+                },
+                "Prev Line"
+              ), ' ',
+              m('button.btn.btn-info',
+                {
+                  onclick: () => {this.debug.prev(), this.onstep()},
+                  accessKey: 'c'
+                },
+                "Prev"
+              ), ' ',
+              m('button.btn.btn-primary',
+                {
+                  onclick: () => {this.debug.next(), this.onstep()},
+                  accessKey: 'v'
+                },
+                "Next"
+              ), ' ',
+              m('button.btn.btn-primary',
+                {
+                  onclick: () => {this.debug.nextLine(), this.onstep()},
+                  accessKey: 'b'
+                },
+                "Next Line"
+              ), ' ',
+              m('button.btn.btn-primary',
+                {
+                  onclick: () => {this.debug.nextBreakpoint(), this.onstep()},
+                  accessKey: 'n'
+                },
+                "Next Breakpoint"
+              )
+            ]),
+            m('.row', [
+              m('.col-7', [
+                (this.currentTab !== 'Bytecode')
+                ? m(SourceCode, {'debugger': this.debug, sourceFile: this.currentTab})
+                : m(ByteCode, {'debugger': this.debug})
+
+              ]),
+              m('.col-5', [
+                m('h2', 'Stack'),
+                m('ul',
+                  this.debug.currentInstInfo().stack.map(
+                    d => m('li', m('span.code-line', d))
+                  )
+                )
+              ])
+            ]),
+            m('.row', [
+              m('.col-6', [
+                m('h2', 'Memory'),
+                this.debug.currentInstInfo().memory.map(
+                  (row, i) => m('.code-row', m('span.code-line', toPaddedHex(i * 32) + ' ' + row))
+                )
+              ]),
+              m('.col-6', [
+                m('h2', 'Storage'),
+                function(storage) {
+                  return Object.keys(storage).map(
+                    key => m('.code-row', m('span.code-line', key + ' => ' + storage[key]))
+                  )
+                }(this.debug.currentInstInfo().storage)
+              ])
+            ])
+          ])
+        }
+      }
+
+      let SourceCode = {
+        oninit(vnode) {
+          this.debug = vnode.attrs['debugger']
+        },
+
+        view(vnode) {
+          let instInfo = this.debug.currentInstInfo()
+          let sourceFile = vnode.attrs.sourceFile
+          let thisFile = sourceFile === instInfo.sourceFile
+          if (thisFile) {
+            var [startLine, startOffset] = this.debug.byteOffsetToLineOffset(
+              sourceFile, instInfo.sourceStart
+            )
+            var [endLine, endOffset] = this.debug.byteOffsetToLineOffset(
+              sourceFile, instInfo.sourceStart + instInfo.sourceLength
+            )
+          }
+          const renderCodeLine = (line, i) => {
+            let scrollAttrs = {
+              oncreate: (vnode) => vnode.dom.scrollIntoView(),
+              onupdate: (vnode) => vnode.dom.scrollIntoView()
+            }
+            if (!thisFile || i < startLine || endLine < i) {
+              return m('span.code-line', line)
+            } else if (startLine < i && i < endLine) {
+              return m('span.code-line.current-line', line)
+            } else if (startLine == i && i < endLine) {
+              return [
+                m('span.code-line', line.substring(0, startOffset)),
+                m('span.code-line.current-line', scrollAttrs, line.substring(startOffset))
+              ]
+            } else if (startLine == i && i == endLine) {
+              return [
+                m('span.code-line', line.substring(0, startOffset)),
+                m('span.code-line.current-line', scrollAttrs, line.substring(startOffset, endOffset)),
+                m('span.code-line', line.substring(endOffset))
+              ]
+            } else if (startLine < i && i == endLine) {
+              return [
+                m('span.code-line.current-line', line.substring(0, endOffset)),
+                m('span.code-line', line.substring(endOffset))
+              ]
+            } else throw new Error("Unexpected line start and end points")
+          }
+          return m('.code-container',
+            (
+              this.debug.data.sources[sourceFile] || '<source not available>'
+            ).split('\n').map(
+              (line, i) => m('.code-row', [
+                m(
+                  'span',
+                  this.debug.isBreakpoint(sourceFile, i) ? {
+                    class: 'code-label breakpoint',
+                    onclick: () => this.debug.removeBreakpoint(sourceFile, i)
+                  } : {
+                    class: 'code-label',
+                    onclick: () => this.debug.addBreakpoint(sourceFile, i)
+                  },
+                  (i + 1).toString()),
+                renderCodeLine(line, i)
+              ])
+            )
+          )
+        }
+      }
+
+      let ByteCode = {
+        oninit(vnode) {
+          this.debug = vnode.attrs['debugger']
+        },
+
+        view(vnode) {
+          let contractInfo = this.debug.data.contractInfoLookup[this.debug.currentInstInfo().infoHash]
+          return m('.code-container',
+            Object.keys(contractInfo).map(
+              (pc) => m('.code-row', [
+                m(
+                  'span',
+                  (this.debug.currentInstInfo().pc == pc)
+                  ? {
+                    class: 'current-line code-line',
+                    oncreate: (vnode) => vnode.dom.scrollIntoView(),
+                    onupdate: (vnode) => vnode.dom.scrollIntoView()
+                  }
+                  : {class: 'code-line', oncreate: () => vnode.dom.scrollIntoView()},
+                  toPaddedHex(pc) + ' ' + contractInfo[pc].op
+                )
+              ])
+            )
+          )
+        }
+      }
+
+      function toPaddedHex(n) {
+        let hexified = parseInt(n).toString(16)
+        let pad = "0000"
+        return pad.substring(0, pad.length - hexified.length) + hexified
+      }
+
+      let debugData = $DEBUGDATA
+
+      let debugger_ = new Debugger(debugData)
+
+      let DebugViewSingleton = {
+        view(vnode) {
+          return m(DebugView, {'debugger': debugger_})
+        }
+      }
+
+      m.mount(document.body, DebugViewSingleton)
+    </script>
+  </body>
+</html>
