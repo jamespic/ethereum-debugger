@@ -1,7 +1,6 @@
 const crypto = require('crypto')
 const fs = require('fs')
 
-const {promisify} = require('bluebird')
 const binToOps = require('eth-bin-to-ops')
 
 function makeSourceMapLookup(solcOutput) {
@@ -149,7 +148,7 @@ async function extractTxInfo(txHash, web3Provider, solcOutput, sources, findImpo
 }
 
 async function dumpTransactionTrace(txHash, web3Provider, {solcOutput, sources, findImport}, outputLocation) {
-  let template = fs.readFileSync(__dirname + '/template.html', 'utf-8')
+  let template = fs.readFileSync(__dirname + '/../template.html', 'utf-8')
   let data = JSON.stringify(
     await extractTxInfo(txHash, web3Provider, solcOutput, sources, findImport),
     null, 2

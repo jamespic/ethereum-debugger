@@ -1,14 +1,21 @@
 {
   "name": "ethereum-debugger",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "A standalone debugger for Ethereum",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
+    "prepare": "babel src --out-dir dist",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "James Pickering",
+  "repository": "https://github.com/jamespic/ethereum-debugger",
   "license": "MIT",
   "dependencies": {
     "eth-bin-to-ops": "^1.0.1"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
+    "babel-preset-env": "^1.6.1"
   }
 }
