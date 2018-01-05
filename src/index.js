@@ -23,7 +23,7 @@ function makeSourceMapLookup(solcOutput) {
       })
       fuzzySourceMapLookup.push({
         bytecodeRegex: new RegExp(makeBytecodeRegex(contract.runtimeBytecode, true) + '$'),
-        sourceMap: sourcemap
+        sourceMap: contract.srcmapRuntime
       })
     }
     if (contract.bytecode) {
