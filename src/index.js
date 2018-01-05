@@ -3,24 +3,41 @@ const fs = require('fs')
 
 const binToOps = require('eth-bin-to-ops')
 
+function makeBytecodeRegex(bytecode, fuzzy = false) {
+  let result = '0x' + bytecode.replace(/_.{39}/g, '.{40}') // Handle links
+  if (fuzzy) result = result.replace(
+    /00a165627a7a72305820.{64}0029/g, '00a165627a7a72305820.{64}0029'
+  ) // Handle contracts that differ only by metadata hash
+  return result
+}
+
 function makeSourceMapLookup(solcOutput) {
   let sourceMapLookup = []
+  let fuzzySourceMapLookup = []
   for (let contractName in solcOutput.contracts) {
     let contract = solcOutput.contracts[contractName]
     if (contract.runtimeBytecode) {
       sourceMapLookup.push({
-        bytecodeRegex: new RegExp('^0x' + contract.runtimeBytecode.replace(/_.{39}/g, '.{40}') + '$'),
+        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.runtimeBytecode) + '$'),
         sourceMap: contract.srcmapRuntime
+      })
+      fuzzySourceMapLookup.push({
+        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.runtimeBytecode, true) + '$'),
+        sourceMap: sourcemap
       })
     }
     if (contract.bytecode) {
       sourceMapLookup.push({
-        bytecodeRegex: new RegExp('^0x' + contract.bytecode.replace(/_.{39}/g, '.{40}')),
+        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.bytecode)),
+        sourceMap: contract.srcmap
+      })
+      fuzzySourceMapLookup.push({
+        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.bytecode, true)),
         sourceMap: contract.srcmap
       })
     }
   }
-  return sourceMapLookup
+  return sourceMapLookup.concat(fuzzySourceMapLookup)
 }
 
 function mergeContractInfo(bytecode, sourceMap, sourceList) {
@@ -116,8 +133,8 @@ async function extractTxInfo(txHash, web3Provider, solcOutput, sources, findImpo
       case 'DELEGATECALL':
       case 'STATICCALL':
         let callee = '0x' + traceItem.stack[traceItem.stack.length - 2].substr(24, 40)
-        code = await callRPC('eth_getCode', callee)
-        infoHash = await findContractInfo(code)
+        let code = await callRPC('eth_getCode', callee)
+        let infoHash = await findContractInfo(code)
         contractStack[traceItem.depth + 1] = infoHash
         break
       case 'CREATE':

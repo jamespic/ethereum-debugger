@@ -1,6 +1,6 @@
 {
   "name": "ethereum-debugger",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A standalone debugger for Ethereum",
   "main": "dist/index.js",
   "scripts": {
