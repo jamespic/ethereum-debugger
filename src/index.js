@@ -14,27 +14,35 @@ function makeBytecodeRegex(bytecode, fuzzy = false) {
 function makeSourceMapLookup(solcOutput) {
   let sourceMapLookup = []
   let fuzzySourceMapLookup = []
-  for (let contractName in solcOutput.contracts) {
-    let contract = solcOutput.contracts[contractName]
-    if (contract.runtimeBytecode) {
-      sourceMapLookup.push({
-        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.runtimeBytecode) + '$'),
-        sourceMap: contract.srcmapRuntime
-      })
-      fuzzySourceMapLookup.push({
-        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.runtimeBytecode, true) + '$'),
-        sourceMap: contract.srcmapRuntime
-      })
-    }
-    if (contract.bytecode) {
-      sourceMapLookup.push({
-        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.bytecode)),
-        sourceMap: contract.srcmap
-      })
-      fuzzySourceMapLookup.push({
-        bytecodeRegex: new RegExp(makeBytecodeRegex(contract.bytecode, true)),
-        sourceMap: contract.srcmap
-      })
+  function addSourceMap(bytecode, sourceMap, runtime) {
+    sourceMapLookup.push({
+      bytecodeRegex: new RegExp(makeBytecodeRegex(bytecode, false) + (runtime ? '$' : '')),
+      sourceMap: sourceMap
+    })
+    fuzzySourceMapLookup.push({
+      bytecodeRegex: new RegExp(makeBytecodeRegex(bytecode, true) + (runtime ? '$' : '')),
+      sourceMap: sourceMap
+    })
+  }
+  for (let name in solcOutput.contracts) {
+    let contractObj = solcOutput.contracts[name]
+    if (typeof contractObj.interface == 'string') { // Old style JSON
+      if (contractObj.runtimeBytecode) {
+        addSourceMap(contractObj.runtimeBytecode, contractObj.srcmapRuntime, true)
+      }
+      if (contractObj.bytecode) {
+        addSourceMap(contractObj.bytecode, contractObj.srcmap, false)
+      }
+    } else { // New style JSON - so
+      for (let contractName in contractObj) {
+        let contract = contractObj[contractName]
+        if (contract.evm.deployedBytecode && contract.evm.deployedBytecode.sourceMap) {
+          addSourceMap(contract.evm.deployedBytecode.object, contract.evm.deployedBytecode.sourceMap, true)
+        }
+        if (contract.evm.bytecode && contract.evm.bytecode.sourceMap) {
+          addSourceMap(contract.evm.bytecode.object, contract.evm.bytecode.sourceMap, false)
+        }
+      }
     }
   }
   return sourceMapLookup.concat(fuzzySourceMapLookup)
@@ -96,10 +104,19 @@ async function extractTxInfo(txHash, web3Provider, solcOutput, sources, findImpo
   const sourceMapLookup = makeSourceMapLookup(solcOutput)
   let contractInfoLookup = {}
 
+  let sourceIndexes = []
   for (let sourceName in solcOutput.sources) {
+    if ('id' in solcOutput.sources[sourceName]) {
+      // New style JSON
+      sourceIndexes[solcOutput.sources[sourceName].id] = sourceName
+    }
     if (!(sourceName in sources) && findImport != null) {
       sources[sourceName] = findImport(sourceName).contents
     }
+  }
+  if (sourceIndexes.length == 0) {
+    // Old style JSON
+    sourceIndexes = Object.keys(sources)
   }
 
   let tx = await callRPC('eth_getTransactionByHash', txHash)
@@ -176,3 +193,5 @@ async function dumpTransactionTrace(txHash, web3Provider, {solcOutput, sources, 
 }
 
 module.exports.dumpTransactionTrace = dumpTransactionTrace
+module.exports._makeSourceMapLookup = makeSourceMapLookup
+module.exports._extractTxInfo = extractTxInfo
