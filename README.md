@@ -26,7 +26,7 @@ dumpTransactionTrace(
   web3.currentProvider,
   {
     solcOutput: outputFromSolcJs, // The output from running solc-js - your build framework may save this as json somewhere
-    sources: {'MyContract.sol': 'pragma solidity ...'}, // An object mapping source file names to their contents
+    sources: {'MyContract.sol': 'pragma solidity ...'}, // An object mapping source file names to their contents - if not present, will use metadata from solcOutput
     findImport: findImport // Optional, but useful if you used solc-js's findImports functionality
   },
   'debug/' + txHash + '.html' // Where to save the new file

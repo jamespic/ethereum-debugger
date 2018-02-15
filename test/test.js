@@ -93,6 +93,47 @@ describe('Ethereum Debugger', function () {
         matched = matched || (infoHash in txInfo.contractInfoLookup)
       }
       expect(matched).to.equal(true)
+      expect(txInfo.sources).to.have.property('MyContract.sol')
+    })
+    it('can handle useLiteralContent sources', async function () {
+      this.timeout(10000)
+      var solcJson = JSON.parse(solc.compileStandard(JSON.stringify({
+        language: 'Solidity',
+        sources: {
+          'MyContract.sol': {
+            content: 'import "Imported.sol"; contract MyContract is Imported {function() payable {}}'
+          }
+        },
+        settings: {
+          metadata: {
+            useLiteralContent: true
+          },
+          outputSelection: {
+            '*': {
+              '*': [
+                'metadata',
+                'evm.bytecode',
+                'evm.deployedBytecode'
+              ]
+            }
+          }
+        }
+      }), function findImport (name) {
+        switch(name) {
+          case 'Imported.sol': return {contents: 'contract Imported {}'}
+          default: return {error: 'File not found'}
+        }
+      }))
+      var provider = Ganache.provider()
+      var web3 = new Web3(provider)
+      var accounts = await web3.eth.getAccounts()
+      var bytecode = '0x' + solcJson.contracts['MyContract.sol']['MyContract'].evm.bytecode.object
+      var createTx = await web3.eth.sendTransaction({data: bytecode, from: accounts[0], gasLimit: 1000000})
+      var callTx = await web3.eth.sendTransaction({from: accounts[0], value: 1, to: createTx.contractAddress})
+      var txInfo = await ethereumDebugger._extractTxInfo(callTx.transactionHash, provider, solcJson, {})
+      // Check that at least one of the info hashes has corresponding info
+      expect(txInfo.sources).to.have.property('MyContract.sol')
+      expect(txInfo.sources).to.have.property('Imported.sol')
     })
   })
 })

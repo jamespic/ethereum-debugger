@@ -86,7 +86,26 @@ function mergeContractInfo(bytecode, sourceMap, sourceList) {
   return result
 }
 
-async function extractTxInfo(txHash, web3Provider, solcOutput, sources, findImport) {
+function extractSources(solcOutput) {
+  let sources = {}
+  let contractSources = solcOutput.contracts || {}
+  for (let sourceName in contractSources) {
+    let sourceInfo = contractSources[sourceName] || {}
+    for (let contractName in sourceInfo) {
+      let metadata = sourceInfo[contractName].metadata
+      if (metadata) {
+        let sourceMeta = JSON.parse(metadata).sources
+        for (let sourceMetaName in sourceMeta) {
+          let source = sourceMeta[sourceMetaName]
+          if ('content' in source) sources[sourceMetaName] = source.content
+        }
+      }
+    }
+  }
+  return sources
+}
+
+async function extractTxInfo(txHash, web3Provider, solcOutput, sources = {}, findImport) {
   function callRPC(method, ...args) {
     return new Promise(function(resolve, reject) {
       web3Provider.sendAsync({
@@ -103,6 +122,8 @@ async function extractTxInfo(txHash, web3Provider, solcOutput, sources, findImpo
 
   const sourceMapLookup = makeSourceMapLookup(solcOutput)
   let contractInfoLookup = {}
+
+  sources = Object.assign({}, extractSources(solcOutput), sources)
 
   let sourceIndexes = []
   for (let sourceName in solcOutput.sources) {
